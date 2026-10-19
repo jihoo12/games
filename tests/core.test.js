@@ -10,6 +10,8 @@ import {
   convert,
   textStats,
   dateDifference,
+  isGame2048State,
+  colorInfo,
 } from "../assets/core.js";
 
 test("틱택토: 모든 승리 방향, 무승부, 진행 중", () => {
@@ -89,4 +91,37 @@ test("날짜: 윤년, 연도 경계, 같은 날, 역방향, 잘못된 값", () =
   assert.equal(dateDifference("2026-10-19", "2026-10-19"), 0);
   assert.equal(dateDifference("2026-10-19", "2026-10-18"), -1);
   assert.ok(Number.isNaN(dateDifference("", "")));
+});
+
+test("2048 저장 데이터: 정상 상태와 손상된 값 구별", () => {
+  const valid = { grid: [2, 4, ...Array(14).fill(0)], score: 40 };
+  assert.equal(isGame2048State(valid), true);
+  for (const value of [
+    null,
+    {},
+    { ...valid, grid: [2] },
+    { ...valid, grid: Array(16).fill(0) },
+    { ...valid, grid: [3, ...Array(15).fill(0)] },
+    { ...valid, score: -1 },
+    { ...valid, score: Infinity },
+    { ...valid, grid: ["2", ...Array(15).fill(0)] },
+  ]) {
+    assert.equal(isGame2048State(value), false);
+  }
+});
+
+test("색상: 축약 HEX, RGB, WCAG 명암 대비와 잘못된 입력", () => {
+  const white = colorInfo("#fff"),
+    black = colorInfo("#000000");
+  assert.equal(white.hex, "#ffffff");
+  assert.deepEqual(white.rgb, [255, 255, 255]);
+  assert.equal(white.black, 21);
+  assert.equal(white.white, 1);
+  assert.equal(white.foreground, "#000000");
+  assert.equal(black.foreground, "#ffffff");
+  assert.equal(black.white, 21);
+  assert.equal(black.black, 1);
+  assert.deepEqual(colorInfo("#AbC").rgb, [170, 187, 204]);
+  for (const value of ["red", "#12", "#gggggg", "#12345678", "<script>"])
+    assert.equal(colorInfo(value), null);
 });

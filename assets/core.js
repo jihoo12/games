@@ -148,3 +148,45 @@ export function dateDifference(from, to) {
       86400000,
   );
 }
+
+export function isGame2048State(value) {
+  return (
+    !!value &&
+    Array.isArray(value.grid) &&
+    value.grid.length === 16 &&
+    value.grid.every(
+      (n) =>
+        n === 0 ||
+        (Number.isSafeInteger(n) &&
+          n >= 2 &&
+          n <= 2 ** 30 &&
+          Number.isInteger(Math.log2(n))),
+    ) &&
+    value.grid.some(Boolean) &&
+    Number.isSafeInteger(value.score) &&
+    value.score >= 0
+  );
+}
+
+export function colorInfo(value) {
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return null;
+  let hex = value.toLowerCase();
+  if (hex.length === 4)
+    hex = "#" + [...hex.slice(1)].map((c) => c + c).join("");
+  const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const linear = rgb.map((n) => {
+    const v = n / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance =
+    linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  const black = (luminance + 0.05) / 0.05,
+    white = 1.05 / (luminance + 0.05);
+  return {
+    hex,
+    rgb,
+    black,
+    white,
+    foreground: black >= white ? "#000000" : "#ffffff",
+  };
+}

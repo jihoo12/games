@@ -5,11 +5,21 @@ import {
   convert,
   textStats,
   dateDifference,
+  colorInfo,
 } from "./core.js";
-import { $, status, statusHTML, copy, formatTime } from "./ui.js";
+import {
+  $,
+  status,
+  statusHTML,
+  copy,
+  formatTime,
+  download,
+  read,
+  save,
+} from "./ui.js";
 
 function calculator(root) {
-  root.innerHTML = `<p class="hint">버튼 또는 숫자·사칙연산 키를 사용하세요. Enter: 계산, Backspace: 지우기, Escape: 초기화. 연산은 입력 순서대로 계산합니다.</p><input id="display" class="display mono" aria-label="계산 결과" value="0" readonly><div class="keypad">${["C", "⌫", "±", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "="].map((k) => `<button data-key="${k}" class="${k === "=" ? "primary wide" : ""}">${k}</button>`).join("")}</div>${statusHTML}`;
+  root.innerHTML = `<p class="hint">버튼 또는 숫자·사칙연산 키를 사용하세요. Enter: 계산, Backspace: 지우기, Escape: 초기화. 연산은 입력 순서대로 계산합니다.</p><div class="calc-expression" id="expression" aria-live="polite"></div><input id="display" class="display mono" aria-label="계산 결과" value="0" readonly><div class="keypad">${["C", "⌫", "±", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "="].map((k) => `<button data-key="${k}" class="${k === "=" ? "primary wide" : ""}">${k}</button>`).join("")}</div>${statusHTML}`;
   let current = "0",
     stored = null,
     operator = null,
@@ -66,11 +76,21 @@ function calculator(root) {
       fresh = true;
     }
     display.value = current;
+    $(root, "#expression").textContent =
+      stored !== null && operator ? `${stored} ${operator}` : "";
   }
   root
     .querySelectorAll("[data-key]")
     .forEach((b) => (b.onclick = () => press(b.dataset.key)));
   document.addEventListener("keydown", (e) => {
+    if (
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.target.closest("header") ||
+      /SELECT|TEXTAREA/.test(e.target.tagName)
+    )
+      return;
     const mapped =
       { "/": "÷", "*": "×", "-": "−", Enter: "=", Escape: "C", Backspace: "⌫" }[
         e.key
@@ -86,7 +106,10 @@ function calculator(root) {
 }
 
 function pomodoro(root) {
-  root.innerHTML = `<div class="stack"><div class="row"><button data-preset="25" class="primary">집중 25분</button><button data-preset="5">짧은 휴식 5분</button><button data-preset="15">긴 휴식 15분</button></div><label>사용자 지정 (1~180분)<input type="number" id="minutes" value="25" min="1" max="180" step="1"></label><div class="big center" id="time" role="timer">25:00</div><div class="progress"><span id="progress"></span></div><div class="row"><button class="primary" id="toggle">시작</button><button id="reset">초기화</button></div>${statusHTML}<p class="hint">탭을 열어 두세요. 완료 시 화면과 소리로 알려드려요. 기기가 잠자기 상태이거나 소리가 차단되면 알림이 늦거나 들리지 않을 수 있어요.</p></div>`;
+  root.innerHTML = `<div class="stack"><div class="row timer-presets"><button data-preset="25" aria-pressed="true">집중 25분</button><button data-preset="5" aria-pressed="false">짧은 휴식 5분</button><button data-preset="15" aria-pressed="false">긴 휴식 15분</button></div><label>사용자 지정 (1~180분)<input type="number" id="minutes" value="25" min="1" max="180" step="1"></label><div class="big center" id="time" role="timer">25:00</div><div class="progress" role="progressbar" aria-label="타이머 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress"></span></div><div class="row"><button class="primary" id="toggle">시작</button><button id="reset">초기화</button></div>${statusHTML}<p class="hint">탭을 열어 두세요. 완료 시 화면과 소리로 알려드려요. 기기가 잠자기 상태이거나 소리가 차단되면 알림이 늦거나 들리지 않을 수 있어요.</p></div>`;
+  const savedTimer = read("pomodoro-state", null);
+  const title = document.title;
+  let lastSaved = "";
   let duration = 25 * 60000,
     remaining = duration,
     deadline = 0,
@@ -96,7 +119,41 @@ function pomodoro(root) {
     $(root, "#time").textContent = formatTime(
       Math.ceil(remaining / 1000) * 1000,
     );
-    $(root, "#progress").style.width = `${100 * (1 - remaining / duration)}%`;
+    const progress = Math.max(
+      0,
+      Math.min(100, 100 * (1 - remaining / duration)),
+    );
+    $(root, "#progress").style.width = `${progress}%`;
+    $(root, ".progress").setAttribute(
+      "aria-valuenow",
+      String(Math.round(progress)),
+    );
+    root
+      .querySelectorAll("[data-preset]")
+      .forEach((b) =>
+        b.setAttribute(
+          "aria-pressed",
+          String(+b.dataset.preset * 60000 === duration),
+        ),
+      );
+    document.title =
+      remaining <= 0
+        ? `완료! · ${title}`
+        : running
+          ? `${$(root, "#time").textContent} · ${title}`
+          : title;
+    const state = {
+      duration,
+      remaining: Math.ceil(remaining / 1000) * 1000,
+      deadline,
+      running,
+    };
+    const serialized = JSON.stringify(state);
+    state.remaining = Math.min(duration, state.remaining);
+    if (serialized !== lastSaved) {
+      save("pomodoro-state", state);
+      lastSaved = serialized;
+    }
     $(root, "#toggle").textContent = running
       ? "일시정지"
       : remaining <= 0
@@ -162,7 +219,7 @@ function pomodoro(root) {
       status(root, "타이머 진행 중");
       try {
         audio ||= new (window.AudioContext || window.webkitAudioContext)();
-        audio.resume();
+        audio.resume().catch(() => {});
       } catch {
         /* Optional audio. */
       }
@@ -181,16 +238,46 @@ function pomodoro(root) {
     draw();
   }, 100);
   $(root, "#reset").onclick = reset;
-  reset();
+  if (
+    savedTimer &&
+    Number.isFinite(savedTimer.duration) &&
+    savedTimer.duration >= 60000 &&
+    savedTimer.duration <= 10800000 &&
+    Number.isFinite(savedTimer.remaining) &&
+    savedTimer.remaining >= 0 &&
+    savedTimer.remaining <= savedTimer.duration &&
+    Number.isFinite(savedTimer.deadline) &&
+    typeof savedTimer.running === "boolean"
+  ) {
+    duration = savedTimer.duration;
+    deadline = savedTimer.deadline;
+    running = savedTimer.running;
+    remaining = running
+      ? Math.max(0, deadline - Date.now())
+      : savedTimer.remaining;
+    if (!remaining) running = false;
+    $(root, "#minutes").value = duration / 60000;
+    $(root, "#minutes").disabled = running;
+    status(
+      root,
+      remaining <= 0
+        ? "시간이 다 됐어요! 수고하셨습니다."
+        : running
+          ? "진행 중인 타이머를 이어서 표시해요."
+          : "이전 타이머를 불러왔어요.",
+    );
+    draw();
+  } else reset();
 }
 
 function stopwatch(root) {
-  root.innerHTML = `<div class="big center" id="time" role="timer">00:00.00</div><div class="row actions"><button class="primary" id="toggle">시작</button><button id="lap" disabled>랩 기록</button><button id="reset">초기화</button></div><ol id="laps" class="lap-list"></ol>${statusHTML}`;
+  root.innerHTML = `<div class="big center" id="time" role="timer">00:00.00</div><div class="row actions"><button class="primary" id="toggle">시작</button><button id="lap" disabled>랩 기록</button><button id="reset">초기화</button></div><button id="export" class="actions" disabled>랩 기록 저장 (.csv)</button><p class="hint" id="lap-hint">시작한 뒤 랩 기록을 눌러 구간별 시간을 남겨보세요.</p><ol id="laps" class="lap-list"></ol>${statusHTML}`;
   let elapsed = 0,
     started = 0,
     running = false,
     count = 0,
-    lastLap = 0;
+    lastLap = 0,
+    records = [];
   const total = () => elapsed + (running ? performance.now() - started : 0);
   const format = (ms) =>
     `${formatTime(ms)}.${String(Math.floor((ms % 1000) / 10)).padStart(2, "0")}`;
@@ -215,10 +302,23 @@ function stopwatch(root) {
       li = document.createElement("li");
     li.textContent = `랩 ${++count}: ${format(time)} (+${format(time - lastLap)})`;
     $(root, "#laps").prepend(li);
+    records.push([count, format(time), format(time - lastLap)]);
     lastLap = time;
+    $(root, "#export").disabled = false;
+    $(root, "#lap-hint").hidden = true;
   };
+  $(root, "#export").onclick = () =>
+    download(
+      "\ufeff랩,누적 시간,구간 시간\n" +
+        records.map((row) => row.join(",")).join("\n"),
+      "stopwatch-laps.csv",
+      "text/csv;charset=utf-8",
+    );
   $(root, "#reset").onclick = () => {
     elapsed = started = count = lastLap = 0;
+    records = [];
+    $(root, "#export").disabled = true;
+    $(root, "#lap-hint").hidden = false;
     running = false;
     $(root, "#toggle").textContent = "시작";
     $(root, "#lap").disabled = true;
@@ -325,6 +425,7 @@ function password(root) {
       !sets.length
     ) {
       $(root, "#result").value = "";
+      $(root, "#copy").disabled = true;
       status(root, "길이는 4~128, 문자 종류는 하나 이상 선택해 주세요.");
       return;
     }
@@ -332,9 +433,13 @@ function password(root) {
       chars = sets.map((s) => s[randomInt(0, s.length - 1)]);
     while (chars.length < length) chars.push(all[randomInt(0, all.length - 1)]);
     $(root, "#result").value = shuffled(chars).join("");
+    $(root, "#copy").disabled = false;
     status(root, `${length}자리 · ${sets.length}가지 문자 종류`);
   }
   $(root, "#generate").onclick = generate;
+  root
+    .querySelectorAll("input:not([readonly])")
+    .forEach((input) => input.addEventListener("input", generate));
   $(root, "#copy").onclick = (e) =>
     copy($(root, "#result").value, e.currentTarget);
   generate();
@@ -347,6 +452,7 @@ function random(root) {
     $(root, "#range").hidden = mode !== "number";
     $(root, "#list-options").hidden = mode !== "list";
     status(root, "");
+    $(root, "#result").textContent = "어떤 결과가 나올까요?";
   };
   $(root, "#draw").onclick = () => {
     try {
@@ -387,26 +493,31 @@ function random(root) {
       $(root, "#result").textContent = output;
       status(root, "추첨 완료!");
     } catch (error) {
+      $(root, "#result").textContent = "추첨 조건을 확인해 주세요.";
       status(root, error.message);
     }
   };
 }
 
 function color(root) {
-  root.innerHTML = `<div class="stack"><label>색상 선택<input type="color" id="picker" value="#286249" style="height:60px"></label><label>HEX<input class="mono" id="hex" value="#286249" maxlength="7" spellcheck="false"></label><div id="swatch" class="swatch"></div><output class="result mono" id="rgb" aria-live="polite"></output><div class="row"><button id="copy">HEX 복사</button><button id="random">랜덤 색상</button></div>${statusHTML}</div>`;
+  root.innerHTML = `<div class="stack"><label>색상 선택<input type="color" id="picker" value="#286249" style="height:60px"></label><label>HEX<input class="mono" id="hex" value="#286249" maxlength="7" spellcheck="false" autocomplete="off"></label><div class="rgb-fields">${["R", "G", "B"].map((c, i) => `<label>${c}<input type="number" id="channel-${i}" min="0" max="255" step="1" value="0" inputmode="numeric"></label>`).join("")}</div><div id="swatch" class="swatch">이 색 위의 글자는 이렇게 보여요</div><output class="result mono" id="rgb" aria-live="polite"></output><p class="hint" id="contrast"></p><div class="row"><button id="copy">HEX 복사</button><button id="copy-rgb">RGB 복사</button><button id="random">랜덤 색상</button></div>${statusHTML}</div>`;
   function draw(value) {
-    if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) {
+    const info = colorInfo(value.trim());
+    const valid = !!info;
+    $(root, "#copy").disabled = $(root, "#copy-rgb").disabled = !valid;
+    $(root, "#hex").setAttribute("aria-invalid", String(!valid));
+    if (!valid) {
       status(root, "#abc 또는 #aabbcc 형식으로 입력해 주세요.");
       return;
     }
-    let hex = value.toLowerCase();
-    if (hex.length === 4)
-      hex = "#" + [...hex.slice(1)].map((c) => c + c).join("");
-    $(root, "#picker").value = hex;
-    $(root, "#swatch").style.backgroundColor = hex;
-    $(root, "#rgb").textContent =
-      `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
-    $(root, "#copy").dataset.hex = hex;
+    $(root, "#picker").value = info.hex;
+    $(root, "#swatch").style.backgroundColor = info.hex;
+    $(root, "#swatch").style.color = info.foreground;
+    $(root, "#rgb").textContent = `rgb(${info.rgb.join(", ")})`;
+    $(root, "#contrast").textContent =
+      `검정 글자 대비 ${info.black.toFixed(2)}:1 · 흰 글자 대비 ${info.white.toFixed(2)}:1 (일반 텍스트 WCAG AA 기준 4.5:1 이상)`;
+    info.rgb.forEach((n, i) => ($(root, `#channel-${i}`).value = n));
+    $(root, "#copy").dataset.hex = info.hex;
     status(root, "");
   }
   $(root, "#picker").oninput = (e) => {
@@ -414,8 +525,29 @@ function color(root) {
     draw(e.target.value);
   };
   $(root, "#hex").oninput = (e) => draw(e.target.value);
+  root.querySelectorAll('[id^="channel-"]').forEach(
+    (input) =>
+      (input.oninput = () => {
+        const values = [0, 1, 2].map((i) => $(root, `#channel-${i}`).value);
+        if (
+          values.some(
+            (v) => v === "" || !Number.isInteger(+v) || +v < 0 || +v > 255,
+          )
+        ) {
+          status(root, "R, G, B는 0~255 사이의 정수로 입력해 주세요.");
+          $(root, "#copy").disabled = $(root, "#copy-rgb").disabled = true;
+          return;
+        }
+        const hex =
+          "#" + values.map((n) => (+n).toString(16).padStart(2, "0")).join("");
+        $(root, "#hex").value = hex;
+        draw(hex);
+      }),
+  );
   $(root, "#copy").onclick = (e) =>
     copy(e.currentTarget.dataset.hex, e.currentTarget);
+  $(root, "#copy-rgb").onclick = (e) =>
+    copy($(root, "#rgb").textContent, e.currentTarget);
   $(root, "#random").onclick = () => {
     const hex = "#" + randomInt(0, 0xffffff).toString(16).padStart(6, "0");
     $(root, "#hex").value = hex;
@@ -458,21 +590,44 @@ function date(root) {
 }
 
 function json(root) {
-  root.innerHTML = `<div class="stack"><label>JSON 입력<textarea id="input" class="mono" spellcheck="false" placeholder='{"hello":"world","items":[1,2,3]}'></textarea></label><div class="row"><button class="primary" id="format">보기 좋게 정리</button><button id="minify">압축</button><button id="clear">비우기</button></div>${statusHTML}<label>결과<textarea id="output" class="mono" readonly spellcheck="false"></textarea></label><button id="copy">복사</button><p class="hint">표준 JSON 문법만 지원합니다. JavaScript 객체나 주석은 허용하지 않아요. 큰 정수는 JavaScript 숫자 정밀도에 따라 달라질 수 있습니다.</p></div>`;
+  root.innerHTML = `<div class="stack"><label>JSON 입력<textarea id="input" class="mono" spellcheck="false" placeholder='{"hello":"world","items":[1,2,3]}'></textarea></label><label>들여쓰기<select id="indent"><option value="2">공백 2칸</option><option value="4">공백 4칸</option><option value="tab">탭</option></select></label><div class="row"><button class="primary" id="format">보기 좋게 정리</button><button id="minify">압축</button><button id="clear">비우기</button></div>${statusHTML}<label>결과<textarea id="output" class="mono" readonly spellcheck="false"></textarea></label><div class="row"><button id="copy" disabled>복사</button><button id="download" disabled>JSON 파일 저장</button></div><p class="hint">Ctrl/⌘ + Enter로 정리할 수 있어요. 표준 JSON 문법만 지원합니다. JavaScript 객체나 주석은 허용하지 않아요. 큰 정수는 JavaScript 숫자 정밀도에 따라 달라질 수 있습니다.</p></div>`;
   function process(spaces) {
     try {
       const parsed = JSON.parse($(root, "#input").value);
       $(root, "#output").value = JSON.stringify(parsed, null, spaces);
+      $(root, "#copy").disabled = $(root, "#download").disabled = false;
       status(root, "올바른 JSON입니다.");
     } catch (error) {
       $(root, "#output").value = "";
+      $(root, "#copy").disabled = $(root, "#download").disabled = true;
       status(root, `JSON 오류: ${error.message}`);
     }
   }
-  $(root, "#format").onclick = () => process(2);
+  $(root, "#format").onclick = () =>
+    process(
+      $(root, "#indent").value === "tab" ? "\t" : +$(root, "#indent").value,
+    );
+  $(root, "#download").onclick = () =>
+    download(
+      $(root, "#output").value,
+      "formatted.json",
+      "application/json;charset=utf-8",
+    );
+  $(root, "#input").oninput = () => {
+    $(root, "#output").value = "";
+    $(root, "#copy").disabled = $(root, "#download").disabled = true;
+    status(root, "입력을 수정했어요. 정리 또는 압축을 눌러 주세요.");
+  };
+  $(root, "#input").onkeydown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      $(root, "#format").click();
+    }
+  };
   $(root, "#minify").onclick = () => process(0);
   $(root, "#clear").onclick = () => {
     $(root, "#input").value = $(root, "#output").value = "";
+    $(root, "#copy").disabled = $(root, "#download").disabled = true;
     status(root, "");
   };
   $(root, "#copy").onclick = (e) =>

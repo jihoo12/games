@@ -37,13 +37,28 @@ jobs:
           node-version: 24
       - name: Test game rules and tools
         run: npm test
+      - name: Install browser test dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser regression tests
+        run: |
+          python3 -m http.server 8000 > /tmp/playground-http.log 2>&1 &
+          playground_server_pid=$!
+          trap 'kill "$playground_server_pid"' EXIT
+          curl --retry 5 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:8000/ > /dev/null
+          npm run test:browser
+      - name: Prepare static site
+        run: |
+          mkdir -p _site
+          cp index.html pingpong.html snakegame.html LICENSE _site/
+          cp -R assets _site/assets
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          path: "_site"
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

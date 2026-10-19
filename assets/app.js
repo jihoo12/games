@@ -1,5 +1,6 @@
 import { games } from "./games.js";
 import { tools } from "./tools.js";
+import { read, save, copy } from "./ui.js";
 export const catalog = [
   [
     "pingpong",
@@ -44,47 +45,154 @@ export const catalog = [
   url,
 }));
 const main = document.querySelector("#main");
-const id = new URLSearchParams(location.search).get("app");
-const app = catalog.find((a) => a.id === id);
-if (app && !app.url) {
+const params = new URLSearchParams(location.search);
+const app = catalog.find((a) => a.id === params.get("app"));
+const storedFavorites = read("favorites", []);
+let favorites = new Set(
+  Array.isArray(storedFavorites)
+    ? storedFavorites.filter((id) => catalog.some((a) => a.id === id))
+    : [],
+);
+const href = (app) => app.url || `?app=${app.id}`;
+function favoriteButton(app) {
+  const selected = favorites.has(app.id);
+  return `<button class="favorite" data-favorite="${app.id}" aria-pressed="${selected}" aria-label="${app.title} 즐겨찾기${selected ? " 해제" : " 추가"}" title="즐겨찾기">${selected ? "★" : "☆"}</button>`;
+}
+function card(app) {
+  return `<article class="card ${app.type}"><a class="card-link" href="${href(app)}"><span class="card-icon" aria-hidden="true">${app.icon}</span><h3>${app.title}</h3><p>${app.description}</p><span class="card-tag">${app.type === "game" ? "PLAY · 게임" : "TOOL · 도구"} ↗</span></a>${favoriteButton(app)}</article>`;
+}
+function toggleFavorite(id) {
+  if (favorites.has(id)) favorites.delete(id);
+  else favorites.add(id);
+  save("favorites", [...favorites]);
+}
+if (app?.url) {
+  location.replace(app.url);
+} else if (app) {
   document.title = `${app.title} · 작은 놀이터`;
-  main.innerHTML = `<a class="back" href="index.html">← 전체 놀이터</a><section class="app-heading"><div class="eyebrow">${app.type === "game" ? "PLAY / 게임" : "MAKE / 도구"}</div><h1>${app.icon} ${app.title}</h1><p>${app.description}</p></section><section class="workspace" id="workspace" aria-label="${app.title}"></section>`;
+  const recent = read("recent", []);
+  save(
+    "recent",
+    [
+      app.id,
+      ...(Array.isArray(recent)
+        ? recent.filter((id) => id !== app.id && typeof id === "string")
+        : []),
+    ].slice(0, 5),
+  );
+  const related = catalog
+    .filter((a) => a.type === app.type && a.id !== app.id)
+    .slice(0, 3);
+  main.innerHTML = `<a class="back" href="index.html?resume=1">← 전체 놀이터</a><section class="app-heading"><div class="eyebrow">${app.type === "game" ? "PLAY / 게임" : "MAKE / 도구"}</div><div class="detail-title"><h1>${app.icon} ${app.title}</h1>${favoriteButton(app)}</div><p>${app.description}</p><button class="subtle" id="share">링크 복사</button></section><section class="workspace" id="workspace" aria-label="${app.title}"></section><section class="related"><h2>${app.type === "game" ? "다음 게임도 즐겨보세요" : "함께 쓰기 좋은 도구"}</h2><div class="quick-links">${related.map((a) => `<a href="${href(a)}">${a.icon} ${a.title} <span aria-hidden="true">↗</span></a>`).join("")}</div></section>`;
   (games[app.id] || tools[app.id])(document.querySelector("#workspace"));
+  document.querySelector("#share").onclick = (e) => {
+    const url = new URL(location.href);
+    url.search = "";
+    url.searchParams.set("app", app.id);
+    url.hash = "";
+    copy(url.href, e.currentTarget);
+  };
+  main.querySelector("[data-favorite]").onclick = (e) => {
+    toggleFavorite(app.id);
+    const button = e.currentTarget;
+    button.setAttribute("aria-pressed", String(favorites.has(app.id)));
+    button.setAttribute(
+      "aria-label",
+      `${app.title} 즐겨찾기${favorites.has(app.id) ? " 해제" : " 추가"}`,
+    );
+    button.textContent = favorites.has(app.id) ? "★" : "☆";
+  };
 } else {
-  main.innerHTML = `<section class="hero"><div><div class="eyebrow">YOUR EVERYDAY PLAYGROUND</div><h1>잠깐의 여유,<br>작은 즐거움.</h1><p>머리를 깨우는 게임부터 매일 쓰는 도구까지.<br>마음 가는 것 하나 골라 시작해 보세요.</p></div><div class="hero-art" aria-hidden="true"><span>✳</span><span>🎲</span><span>⏱</span><span>↗</span></div></section><div class="toolbar" aria-label="분류"><button class="filter" data-filter="all" aria-pressed="true">전체 20</button><button class="filter" data-filter="game" aria-pressed="false">게임 10</button><button class="filter" data-filter="tool" aria-pressed="false">도구 10</button><input class="search" id="search" type="search" placeholder="무엇을 찾고 있나요?" aria-label="게임과 도구 검색"></div><div class="catalog-meta"><h2>오늘은 무엇을 해볼까요?</h2><span id="count" class="muted" role="status"></span></div><div class="cards" id="cards"></div>`;
-  let filter = "all";
+  const counts = {
+    all: catalog.length,
+    game: catalog.filter((a) => a.type === "game").length,
+    tool: catalog.filter((a) => a.type === "tool").length,
+  };
+  const recent = read("recent", []);
+  const recentApps = (Array.isArray(recent) ? recent : [])
+    .slice(0, 5)
+    .map((id) => catalog.find((a) => a.id === id))
+    .filter(Boolean);
+  main.innerHTML = `<section class="hero"><div><div class="eyebrow">YOUR EVERYDAY PLAYGROUND</div><h1>잠깐의 여유,<br>작은 즐거움.</h1><p>머리를 깨우는 게임부터 매일 쓰는 도구까지.<br>마음 가는 것 하나 골라 시작해 보세요.</p></div><div class="hero-art" aria-hidden="true"><span>✳</span><span>🎲</span><span>⏱</span><span>↗</span></div></section>${recentApps.length ? `<section class="recent"><h2>최근에 사용했어요</h2><div class="quick-links">${recentApps.map((a) => `<a href="${href(a)}">${a.icon} ${a.title}</a>`).join("")}</div></section>` : ""}<div class="toolbar" aria-label="분류"><button class="filter" data-filter="all" aria-pressed="true">전체 ${counts.all}</button><button class="filter" data-filter="game" aria-pressed="false">게임 ${counts.game}</button><button class="filter" data-filter="tool" aria-pressed="false">도구 ${counts.tool}</button><button class="filter" data-filter="favorite" aria-pressed="false">★ 즐겨찾기</button><div class="search-wrap"><input class="search" id="search" type="search" placeholder="무엇을 찾고 있나요?" aria-label="게임과 도구 검색" aria-keyshortcuts="/"><span class="search-key" aria-hidden="true">/</span></div></div><div class="catalog-meta"><h2>오늘은 무엇을 해볼까요?</h2><span id="count" class="muted" role="status"></span></div><div class="cards" id="cards"></div>`;
+  const previous = params.has("resume") ? read("catalog-state", {}) : {};
+  let filter = params.get("filter") || previous?.filter || "all";
+  if (!["all", "game", "tool", "favorite"].includes(filter)) filter = "all";
+  const search = document.querySelector("#search");
+  search.value =
+    params.get("q") ??
+    (typeof previous?.query === "string" ? previous.query : "");
   function render() {
-    const query = document
-      .querySelector("#search")
-      .value.trim()
-      .toLocaleLowerCase();
+    const query = search.value.trim().toLocaleLowerCase();
     const items = catalog.filter(
       (a) =>
-        (filter === "all" || a.type === filter) &&
+        (filter === "all" ||
+          (filter === "favorite" ? favorites.has(a.id) : a.type === filter)) &&
         `${a.title} ${a.description} ${a.id}`
           .toLocaleLowerCase()
           .includes(query),
     );
+    const labels = {
+      all: "오늘은 무엇을 해볼까요?",
+      game: "가볍게 한 판 즐겨보세요",
+      tool: "필요할 때 꺼내 쓰세요",
+      favorite: "자주 쓰는 것만 모았어요",
+    };
+    document.querySelector(".catalog-meta h2").textContent = labels[filter];
+    document
+      .querySelectorAll("[data-filter]")
+      .forEach((b) =>
+        b.setAttribute("aria-pressed", String(b.dataset.filter === filter)),
+      );
     document.querySelector("#count").textContent = `${items.length}개`;
     document.querySelector("#cards").innerHTML =
-      items
-        .map(
-          (a) =>
-            `<a class="card ${a.type}" href="${a.url || `?app=${a.id}`}"><span class="card-icon" aria-hidden="true">${a.icon}</span><h3>${a.title}</h3><p>${a.description}</p><span class="card-tag">${a.type === "game" ? "PLAY · 게임" : "TOOL · 도구"} ↗</span></a>`,
-        )
-        .join("") ||
-      '<p class="empty">검색 결과가 없어요. 다른 단어를 입력해 보세요.</p>';
+      items.map(card).join("") ||
+      `<div class="empty"><p>${filter === "favorite" && !query ? "카드의 ☆를 눌러 자주 쓰는 게임과 도구를 모아보세요." : "검색 결과가 없어요. 다른 단어를 입력해 보세요."}</p><button id="clear-search">전체 보기</button></div>`;
+    document.querySelector("#clear-search")?.addEventListener("click", () => {
+      search.value = "";
+      filter = "all";
+      render();
+      search.focus();
+    });
+    save("catalog-state", { filter, query: search.value });
+    const url = new URL(location.href);
+    url.search = "";
+    if (filter !== "all") url.searchParams.set("filter", filter);
+    if (search.value) url.searchParams.set("q", search.value);
+    history.replaceState(null, "", url);
   }
   document.querySelectorAll("[data-filter]").forEach(
     (button) =>
       (button.onclick = () => {
         filter = button.dataset.filter;
-        document
-          .querySelectorAll("[data-filter]")
-          .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
         render();
       }),
   );
-  document.querySelector("#search").oninput = render;
+  document.querySelector("#cards").onclick = (e) => {
+    const button = e.target.closest("[data-favorite]");
+    if (!button) return;
+    const id = button.dataset.favorite;
+    toggleFavorite(id);
+    render();
+    document
+      .querySelector(`[data-favorite="${id}"]`)
+      ?.focus({ preventScroll: true });
+  };
+  search.oninput = render;
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "/" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)
+    ) {
+      e.preventDefault();
+      search.focus();
+    }
+    if (e.key === "Escape" && document.activeElement === search) {
+      search.value = "";
+      render();
+    }
+  });
   render();
 }

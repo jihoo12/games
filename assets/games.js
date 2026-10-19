@@ -1,16 +1,34 @@
-import { winner, moveGrid, randomInt, shuffled, neighbors } from "./core.js";
-import { $, status, statusHTML, read, save } from "./ui.js";
+import {
+  winner,
+  moveGrid,
+  randomInt,
+  shuffled,
+  neighbors,
+  isGame2048State,
+} from "./core.js";
+import {
+  $,
+  status,
+  statusHTML,
+  read,
+  save,
+  renderBoard,
+  boardNavigation,
+} from "./ui.js";
 
 function tictactoe(root) {
   root.innerHTML = `<label>플레이 모드<select id="mode"><option value="cpu">컴퓨터와 (나는 X)</option><option value="friend">친구와 번갈아</option></select></label>${statusHTML}<div class="board three" id="board"></div><button id="reset">새 게임</button>`;
   let board, turn, ended, timer;
   function draw() {
-    $(root, "#board").innerHTML = board
-      .map(
-        (v, i) =>
-          `<button data-i="${i}" aria-label="${i + 1}번 칸${v ? `: ${v}` : ""}" ${v || ended || (turn === "O" && $(root, "#mode").value === "cpu") ? "disabled" : ""}>${v}</button>`,
-      )
-      .join("");
+    renderBoard(
+      root,
+      board
+        .map(
+          (v, i) =>
+            `<button data-i="${i}" aria-label="${i + 1}번 칸${v ? `: ${v}` : ""}" ${v || ended || (turn === "O" && $(root, "#mode").value === "cpu") ? "disabled" : ""}>${v}</button>`,
+        )
+        .join(""),
+    );
     const result = winner(board);
     status(
       root,
@@ -71,6 +89,7 @@ function tictactoe(root) {
   };
   $(root, "#reset").onclick = reset;
   $(root, "#mode").onchange = reset;
+  boardNavigation(root, 3);
   reset();
 }
 
@@ -78,12 +97,15 @@ function memory(root) {
   root.innerHTML = `<p class="hint">두 장씩 뒤집어 같은 그림 8쌍을 찾아보세요.</p>${statusHTML}<div id="board" class="board four"></div><button id="reset">새 게임</button>`;
   let cards, open, found, moves, locked, timer;
   function draw() {
-    $(root, "#board").innerHTML = cards
-      .map(
-        (v, i) =>
-          `<button data-i="${i}" class="${found.has(i) ? "matched" : ""}" ${found.has(i) || open.includes(i) ? "disabled" : ""} aria-label="${i + 1}번 카드: ${found.has(i) || open.includes(i) ? v : "뒤집힘"}">${found.has(i) || open.includes(i) ? v : "?"}</button>`,
-      )
-      .join("");
+    renderBoard(
+      root,
+      cards
+        .map(
+          (v, i) =>
+            `<button data-i="${i}" class="${found.has(i) ? "matched" : ""}" ${found.has(i) || open.includes(i) ? "disabled" : ""} aria-label="${i + 1}번 카드: ${found.has(i) || open.includes(i) ? v : "뒤집힘"}">${found.has(i) || open.includes(i) ? v : "?"}</button>`,
+        )
+        .join(""),
+    );
     status(
       root,
       found.size === 16
@@ -121,30 +143,35 @@ function memory(root) {
     draw();
   }
   $(root, "#reset").onclick = reset;
+  boardNavigation(root, 4);
   reset();
 }
 
 function mines(root) {
-  root.innerHTML = `<p class="hint">8×8 보드에 지뢰 10개. 첫 칸과 주변은 안전해요. 우클릭 또는 깃발 모드로 표시하세요.</p><div class="row"><button id="flag" aria-pressed="false">🚩 깃발 모드: 꺼짐</button><button id="reset">새 게임</button></div>${statusHTML}<div id="board" class="board eight"></div>`;
+  root.innerHTML = `<p class="hint">8×8 보드에 지뢰 10개. 첫 칸과 주변은 안전해요. 우클릭, F 키 또는 깃발 모드로 표시하세요. 방향키로 칸을 이동할 수 있어요.</p><div class="row"><button id="flag" aria-pressed="false">🚩 깃발 모드: 꺼짐</button><button id="reset">새 게임</button></div>${statusHTML}<div id="board" class="board eight"></div>`;
   let bombs,
     revealed,
     flags,
     ended,
     first,
-    flagMode = false;
+    flagMode = false,
+    exploded = -1;
   function draw() {
-    $(root, "#board").innerHTML = Array.from({ length: 64 }, (_, i) => {
-      const n = bombs ? neighbors(i).filter((j) => bombs.has(j)).length : 0;
-      const text =
-        ended && bombs?.has(i)
-          ? "💣"
-          : flags.has(i)
-            ? "🚩"
-            : revealed.has(i)
-              ? n || "·"
-              : "";
-      return `<button data-i="${i}" class="${revealed.has(i) ? "revealed" : ""}" aria-label="${Math.floor(i / 8) + 1}행 ${(i % 8) + 1}열: ${text || "닫힘"}" ${ended || revealed.has(i) ? "disabled" : ""}>${text}</button>`;
-    }).join("");
+    renderBoard(
+      root,
+      Array.from({ length: 64 }, (_, i) => {
+        const n = bombs ? neighbors(i).filter((j) => bombs.has(j)).length : 0;
+        const text =
+          ended && bombs?.has(i)
+            ? "💣"
+            : flags.has(i)
+              ? "🚩"
+              : revealed.has(i)
+                ? n || "·"
+                : "";
+        return `<button data-i="${i}" data-number="${revealed.has(i) ? n : 0}" class="${revealed.has(i) ? "revealed" : ""} ${i === exploded ? "exploded" : ""}" aria-label="${Math.floor(i / 8) + 1}행 ${(i % 8) + 1}열: ${text || "닫힘"}" ${ended || revealed.has(i) ? "disabled" : ""}>${text}</button>`;
+      }).join(""),
+    );
     status(
       root,
       ended
@@ -166,6 +193,7 @@ function mines(root) {
       first = false;
     }
     if (bombs.has(i)) {
+      exploded = i;
       ended = true;
       draw();
       return;
@@ -196,6 +224,15 @@ function mines(root) {
     const b = e.target.closest("[data-i]");
     if (b) flag(+b.dataset.i);
   };
+  $(root, "#board").addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
+      const button = e.target.closest("[data-i]");
+      if (button) {
+        e.preventDefault();
+        flag(+button.dataset.i);
+      }
+    }
+  });
   $(root, "#flag").onclick = () => {
     flagMode = !flagMode;
     $(root, "#flag").setAttribute("aria-pressed", String(flagMode));
@@ -204,6 +241,7 @@ function mines(root) {
   };
   function reset() {
     bombs = null;
+    exploded = -1;
     revealed = new Set();
     flags = new Set();
     ended = false;
@@ -211,15 +249,17 @@ function mines(root) {
     draw();
   }
   $(root, "#reset").onclick = reset;
+  boardNavigation(root, 8);
   reset();
 }
 
 function game2048(root) {
-  root.innerHTML = `<div class="row"><span>점수 <b id="score">0</b> · 최고 <b id="best">0</b></span><button id="reset">새 게임</button></div><p class="hint">방향키, 스와이프, 아래 버튼으로 이동하세요. 2048 이후에도 계속할 수 있어요.</p><div id="board" class="board four" role="group" aria-label="2048 보드" tabindex="0" style="touch-action:none"></div><div class="row center" style="justify-content:center">${["up", "left", "down", "right"].map((d, i) => `<button data-dir="${d}" aria-label="${["위", "왼쪽", "아래", "오른쪽"][i]}">${["↑", "←", "↓", "→"][i]}</button>`).join("")}</div>${statusHTML}`;
+  root.innerHTML = `<div class="row"><span>점수 <b id="score">0</b> · 최고 <b id="best">0</b></span><button id="undo" disabled>한 수 되돌리기</button><button id="reset">새 게임</button></div><p class="hint">진행 상황은 자동 저장돼요. 방향키, 스와이프, 아래 버튼으로 이동하세요. 2048 이후에도 계속할 수 있어요.</p><div id="board" class="board four" role="group" aria-label="2048 보드" tabindex="0" style="touch-action:none"></div><div class="row center" style="justify-content:center">${["up", "left", "down", "right"].map((d, i) => `<button data-dir="${d}" aria-label="${["위", "왼쪽", "아래", "오른쪽"][i]}">${["↑", "←", "↓", "→"][i]}</button>`).join("")}</div>${statusHTML}`;
   let grid,
     score,
     best = Number(read("2048-best", 0)) || 0,
-    start;
+    start,
+    previous = null;
   function spawn() {
     const empty = grid.flatMap((n, i) => (n ? [] : [i]));
     if (empty.length)
@@ -228,12 +268,14 @@ function game2048(root) {
   function draw() {
     $(root, "#board").innerHTML = grid
       .map(
-        (n) =>
-          `<div class="cell tile-${n > 64 ? "high" : n}" aria-label="${n || "빈 칸"}">${n || ""}</div>`,
+        (n, i) =>
+          `<div class="cell tile-${n > 64 ? "high" : n}" role="img" aria-label="${Math.floor(i / 4) + 1}행 ${(i % 4) + 1}열: ${n || "빈 칸"}" style="font-size:${n >= 100000 ? ".85rem" : n >= 10000 ? "1.1rem" : ""}">${n || ""}</div>`,
       )
       .join("");
     $(root, "#score").textContent = score;
     $(root, "#best").textContent = best;
+    $(root, "#undo").disabled = !previous;
+    save("2048-state", { grid, score });
     const over = ["up", "down", "left", "right"].every(
       (d) => !moveGrid(grid, d).changed,
     );
@@ -249,6 +291,7 @@ function game2048(root) {
   function move(d) {
     const next = moveGrid(grid, d);
     if (!next.changed) return;
+    previous = { grid: [...grid], score };
     grid = next.grid;
     score += next.score;
     if (score > best) {
@@ -268,7 +311,13 @@ function game2048(root) {
       ArrowLeft: "left",
       ArrowRight: "right",
     }[e.key];
-    if (d && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+    if (
+      d &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)
+    ) {
       e.preventDefault();
       move(d);
     }
@@ -296,6 +345,7 @@ function game2048(root) {
   };
   board.onpointercancel = () => (start = null);
   function reset() {
+    previous = null;
     grid = Array(16).fill(0);
     score = 0;
     spawn();
@@ -303,7 +353,20 @@ function game2048(root) {
     draw();
   }
   $(root, "#reset").onclick = reset;
-  reset();
+  $(root, "#undo").onclick = () => {
+    if (!previous) return;
+    grid = previous.grid;
+    score = previous.score;
+    previous = null;
+    draw();
+  };
+  const saved = read("2048-state", null);
+  if (isGame2048State(saved)) {
+    grid = saved.grid;
+    score = saved.score;
+    best = Math.max(best, score);
+    draw();
+  } else reset();
 }
 
 function lights(root) {
@@ -316,12 +379,15 @@ function lights(root) {
   }
   function draw() {
     const won = !cells.some(Boolean);
-    $(root, "#board").innerHTML = cells
-      .map(
-        (v, i) =>
-          `<button data-i="${i}" class="${v ? "lit" : ""}" aria-label="${i + 1}번 불" aria-pressed="${v}" ${won ? "disabled" : ""}>${v ? "●" : "·"}</button>`,
-      )
-      .join("");
+    renderBoard(
+      root,
+      cells
+        .map(
+          (v, i) =>
+            `<button data-i="${i}" class="${v ? "lit" : ""}" aria-label="${i + 1}번 불" aria-pressed="${v}" ${won ? "disabled" : ""}>${v ? "●" : "·"}</button>`,
+        )
+        .join(""),
+    );
     status(
       root,
       won
@@ -348,6 +414,7 @@ function lights(root) {
     draw();
   }
   $(root, "#reset").onclick = reset;
+  boardNavigation(root, 5);
   reset();
 }
 
@@ -389,7 +456,31 @@ function reaction(root) {
       );
     }
   }
-  pad.onclick = activate;
+  pad.onclick = (e) => {
+    if (e.detail === 0) activate();
+  };
+  pad.onpointerdown = (e) => {
+    if (e.button === 0) {
+      e.preventDefault();
+      pad.focus();
+      activate();
+    }
+  };
+  pad.onkeydown = (e) => {
+    if (e.code === "Space" || e.key === "Enter") {
+      e.preventDefault();
+      if (!e.repeat) activate();
+    }
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && phase !== "idle") {
+      clearTimeout(timer);
+      phase = "idle";
+      pad.className = "reaction-pad";
+      pad.textContent = "눌러서 다시 시작";
+      status(root, "탭을 벗어나 측정을 취소했어요.");
+    }
+  });
   document.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !e.repeat && e.target == document.body) {
       e.preventDefault();
@@ -408,11 +499,18 @@ function reaction(root) {
 
 function guess(root) {
   root.innerHTML = `<p class="hint">1~100 사이의 정수를 맞혀 보세요. 더 큰지, 작은지 알려드려요.</p><form class="stack" id="form"><label>예상 숫자<input type="number" id="guess" min="1" max="100" step="1" required inputmode="numeric" autocomplete="off"></label><button class="primary" id="submit">확인</button></form>${statusHTML}<div class="result" id="history">아직 시도하지 않았어요.</div><button id="reset" class="actions">새 게임</button>`;
-  let target, attempts, ended, history;
+  let target, attempts, ended, history, low, high, used;
   $(root, "#form").onsubmit = (e) => {
     e.preventDefault();
     const n = Number($(root, "#guess").value);
     if (ended || !Number.isInteger(n) || n < 1 || n > 100) return;
+    if (used.has(n)) {
+      status(root, "이미 입력한 숫자예요. 다른 숫자를 골라보세요.");
+      return;
+    }
+    used.add(n);
+    if (n < target) low = Math.max(low, n + 1);
+    if (n > target) high = Math.min(high, n - 1);
     attempts++;
     ended = n === target || attempts === 7;
     history.push(
@@ -425,7 +523,7 @@ function guess(root) {
         ? `정답! ${attempts}번 만에 맞혔어요.`
         : ended
           ? `기회가 끝났어요. 정답은 ${target}!`
-          : `${n < target ? "더 큰" : "더 작은"} 숫자예요. 남은 기회 ${7 - attempts}번`,
+          : `${n < target ? "더 큰" : "더 작은"} 숫자예요. 남은 기회 ${7 - attempts}번 · 가능 범위 ${low}~${high}`,
     );
     $(root, "#submit").disabled = ended;
     $(root, "#guess").value = "";
@@ -433,6 +531,9 @@ function guess(root) {
   };
   function reset() {
     target = randomInt(1, 100);
+    low = 1;
+    high = 100;
+    used = new Set();
     attempts = 0;
     ended = false;
     history = [];

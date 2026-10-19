@@ -9,16 +9,34 @@
       content="설치 없이 즐기는 미니 게임과 일상 도구. 2048, 지뢰찾기, 타이머, 단위 변환 등 20가지 기능을 만나보세요."
     />
     <title>작은 놀이터 · 게임과 도구</title>
+    <script src="assets/theme.js"></script>
     <link rel="stylesheet" href="assets/style.css" />
     <script type="module" src="assets/app.js"></script>
   </head>
   <body>
+    <a class="skip-link" href="#main">본문으로 바로가기</a>
     <header class="site-header">
       <a class="brand" href="index.html"
         ><span class="brand-mark">✳</span> 작은 놀이터</a
-      ><span class="header-note">잠깐 놀고, 가볍게 해결하고.</span>
+      >
+      <div class="header-actions">
+        <span class="header-note">잠깐 놀고, 가볍게 해결하고.</span
+        ><label class="theme-label"
+          ><span class="sr-only">화면 테마</span
+          ><select id="theme" aria-label="화면 테마">
+            <option value="auto">◐ 자동</option>
+            <option value="light">☀ 밝게</option>
+            <option value="dark">☾ 어둡게</option>
+          </select></label
+        >
+      </div>
     </header>
-    <main id="main"></main>
+    <main id="main" tabindex="-1"></main>
+    <noscript
+      ><p class="notice">
+        게임과 도구를 사용하려면 JavaScript를 켜주세요.
+      </p></noscript
+    >
     <footer>
       가입 없이, 설치 없이. 데이터는 이 브라우저에서 처리해요.
       <a href="https://github.com/jihoo12/games">GitHub ↗</a>
