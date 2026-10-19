@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>스네이크 게임</title>
+<style>
+:root{
+  --bg:#f3f1e8; --board:#e4e8d6; --grid:#d5dac3; --ink:#1f2a1c;
+  --snake:#2f6b3a; --head:#1c4a26; --food:#d6452f; --muted:#5d6a58;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#11160f; --board:#1a2217; --grid:#212b1d; --ink:#e6ecdc;
+    --snake:#7fcf8a; --head:#b6f0bd; --food:#ff6a52; --muted:#8c9b85;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11160f; --board:#1a2217; --grid:#212b1d; --ink:#e6ecdc;
+  --snake:#7fcf8a; --head:#b6f0bd; --food:#ff6a52; --muted:#8c9b85;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  display:flex;align-items:center;justify-content:center;touch-action:manipulation}
+.wrap{width:min(92vw,440px);display:flex;flex-direction:column;gap:12px}
+.top{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:1.5rem;margin:0;font-weight:700}
+.score{font-size:1rem;color:var(--muted)}
+.score b{color:var(--ink);font-size:1.3rem}
+.stage{position:relative}
+canvas{width:100%;aspect-ratio:1;display:block;background:var(--board);border-radius:10px}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;background:color-mix(in srgb,var(--bg) 82%,transparent);border-radius:10px;text-align:center;padding:16px}
+.overlay.hide{display:none}
+.overlay p{margin:0;color:var(--muted);line-height:1.5}
+.overlay h2{margin:0;font-size:1.4rem}
+button{font:inherit;background:var(--snake);color:var(--bg);border:0;border-radius:8px;padding:10px 22px;cursor:pointer;font-weight:700}
+button:focus-visible{outline:3px solid var(--food);outline-offset:2px}
+.pad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,52px);gap:6px;justify-content:center}
+.pad button{padding:0;font-size:1.2rem;background:var(--grid);color:var(--ink)}
+.pad .u{grid-column:2;grid-row:1}.pad .l{grid-column:1;grid-row:2}.pad .d{grid-column:2;grid-row:2}.pad .r{grid-column:3;grid-row:2}
+@media (hover:hover) and (pointer:fine){.pad{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>스네이크</h1>
+    <div class="score">점수 <b id="score">0</b> · 최고 <b id="best">0</b></div>
+  </div>
+  <div class="stage">
+    <canvas id="c" width="400" height="400"></canvas>
+    <div class="overlay" id="ov">
+      <h2 id="ovTitle">스네이크 게임</h2>
+      <p id="ovMsg">방향키 또는 WASD로 움직이세요.<br>스페이스바로 일시정지.</p>
+      <button id="start">시작하기</button>
+    </div>
+  </div>
+  <div class="pad">
+    <button class="u" data-d="U" aria-label="위">▲</button>
+    <button class="l" data-d="L" aria-label="왼쪽">◀</button>
+    <button class="d" data-d="D" aria-label="아래">▼</button>
+    <button class="r" data-d="R" aria-label="오른쪽">▶</button>
+  </div>
+</div>
+<script>
+(()=>{
+const N=20, S=20;
+const cv=document.getElementById('c'), cx=cv.getContext('2d');
+const ov=document.getElementById('ov'), ovTitle=document.getElementById('ovTitle'), ovMsg=document.getElementById('ovMsg');
+const scoreEl=document.getElementById('score'), bestEl=document.getElementById('best');
+const DIR={U:[0,-1],D:[0,1],L:[-1,0],R:[1,0]};
+let snake,dir,next,food,score,timer,running=false,paused=false,best=0;
+try{best=+localStorage.getItem('snakeBest')||0}catch(e){}
+bestEl.textContent=best;
+
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function placeFood(){
+  do{food=[Math.random()*N|0,Math.random()*N|0]}
+  while(snake.some(s=>s[0]===food[0]&&s[1]===food[1]));
+}
+function reset(){
+  snake=[[10,10],[9,10],[8,10]];dir=next='R';score=0;scoreEl.textContent=0;placeFood();
+}
+function speed(){return Math.max(60,130-score*3)}
+function loop(){
+  timer=setTimeout(()=>{if(!paused)step();if(running)loop()},speed());
+}
+function step(){
+  dir=next;const [dx,dy]=DIR[dir];
+  const h=[snake[0][0]+dx,snake[0][1]+dy];
+  if(h[0]<0||h[1]<0||h[0]>=N||h[1]>=N||snake.some(s=>s[0]===h[0]&&s[1]===h[1])) return over();
+  snake.unshift(h);
+  if(h[0]===food[0]&&h[1]===food[1]){score++;scoreEl.textContent=score;placeFood()}
+  else snake.pop();
+  draw();
+}
+function over(){
+  running=false;clearTimeout(timer);
+  if(score>best){best=score;bestEl.textContent=best;try{localStorage.setItem('snakeBest',best)}catch(e){}}
+  ovTitle.textContent='게임 오버';
+  ovMsg.textContent=`점수 ${score}점`;
+  document.getElementById('start').textContent='다시 하기';
+  ov.classList.remove('hide');
+}
+function draw(){
+  cx.clearRect(0,0,400,400);
+  cx.fillStyle=css('--grid');
+  for(let x=0;x<N;x++)for(let y=0;y<N;y++) if((x+y)%2) cx.fillRect(x*S,y*S,S,S);
+  cx.fillStyle=css('--food');
+  cx.beginPath();cx.arc(food[0]*S+S/2,food[1]*S+S/2,S/2-3,0,7);cx.fill();
+  snake.forEach((s,i)=>{
+    cx.fillStyle=i?css('--snake'):css('--head');
+    cx.beginPath();cx.roundRect(s[0]*S+1,s[1]*S+1,S-2,S-2,i?5:7);cx.fill();
+  });
+}
+function start(){
+  reset();paused=false;running=true;ov.classList.add('hide');draw();clearTimeout(timer);loop();
+}
+function turn(d){
+  const opp={U:'D',D:'U',L:'R',R:'L'};
+  if(d!==opp[dir]) next=d;
+}
+document.getElementById('start').onclick=start;
+document.addEventListener('keydown',e=>{
+  const k={ArrowUp:'U',ArrowDown:'D',ArrowLeft:'L',ArrowRight:'R',w:'U',s:'D',a:'L',d:'R'}[e.key];
+  if(k){e.preventDefault();if(running)turn(k)}
+  else if(e.code==='Space'){e.preventDefault();
+    if(!running)start();
+    else{paused=!paused;ovTitle.textContent='일시정지';ovMsg.textContent='스페이스바로 계속하기';
+      document.getElementById('start').style.display='none';ov.classList.toggle('hide',!paused)}
+  }
+});
+document.querySelectorAll('.pad button').forEach(b=>b.addEventListener('click',()=>running&&turn(b.dataset.d)));
+let t0;
+cv.addEventListener('touchstart',e=>{t0=e.touches[0]},{passive:true});
+cv.addEventListener('touchend',e=>{
+  if(!t0||!running)return;const t=e.changedTouches[0];
+  const dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;
+  turn(Math.abs(dx)>Math.abs(dy)?(dx>0?'R':'L'):(dy>0?'D':'U'));
+});
+document.getElementById('start').addEventListener('click',()=>{document.getElementById('start').style.display=''});
+reset();draw();
+})();
+</script>
+</body>
+</html>

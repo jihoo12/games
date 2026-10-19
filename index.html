@@ -1,82 +1,12 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>핑퐁</title>
-<style>
-:root{--bg:#f4f1ea;--fg:#1f2430;--court:#fffdf8;--line:#c9c3b6;--accent:#e4572e;--blue:#2e6ee4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161c;--fg:#eceae4;--court:#1d2029;--line:#3a3f4d;--accent:#ff7a50;--blue:#6fa0ff}}
-:root[data-theme="dark"]{--bg:#14161c;--fg:#eceae4;--court:#1d2029;--line:#3a3f4d;--accent:#ff7a50;--blue:#6fa0ff}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px}
-h1{margin:0;font-size:1.3rem;letter-spacing:.1em}
-.wrap{position:relative;width:100%;max-width:720px}
-canvas{width:100%;height:auto;display:block;background:var(--court);border:2px solid var(--line);border-radius:12px;touch-action:none}
-.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;background:color-mix(in srgb,var(--court) 80%,transparent);border-radius:12px}
-.overlay.hide{display:none}
-.overlay h2{margin:0;font-size:1.6rem}
-button{font:inherit;font-weight:600;padding:10px 22px;border:0;border-radius:999px;background:var(--accent);color:#fff;cursor:pointer}
-p{margin:0;font-size:.9rem;opacity:.75;text-align:center}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
 </head>
 <body>
-<h1>PING PONG</h1>
-<div class="wrap">
-<canvas id="c" width="720" height="440"></canvas>
-<div class="overlay" id="ov">
-<h2 id="t">핑퐁</h2>
-<p id="s">먼저 7점을 얻으면 승리!</p>
-<button id="b">시작하기</button>
-</div>
-</div>
-<p>마우스·터치 드래그 또는 ↑ ↓ / W S 키로 왼쪽 패들을 움직이세요. 스페이스바로 일시정지.</p>
-<script>
-const cv=document.getElementById('c'),ctx=cv.getContext('2d');
-const W=cv.width,H=cv.height,PW=12,PH=80,R=8,WIN=7;
-const ov=document.getElementById('ov'),t=document.getElementById('t'),s=document.getElementById('s'),b=document.getElementById('b');
-let py,ay,bx,by,vx,vy,ps,as,running=false,over=false,keys={};
-function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
-function serve(dir){bx=W/2;by=H/2;const a=(Math.random()*0.8-0.4);const sp=5;vx=dir*sp*Math.cos(a);vy=sp*Math.sin(a)}
-function reset(){py=ay=H/2-PH/2;ps=as=0;over=false;serve(Math.random()<.5?1:-1)}
-function start(){reset();running=true;ov.classList.add('hide')}
-b.onclick=start;
-addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=1;if(e.code==='Space'){e.preventDefault();if(over)return start();running=!running;if(!running){t.textContent='일시정지';s.textContent='스페이스바로 계속';b.textContent='계속하기';ov.classList.remove('hide');b.onclick=()=>{running=true;ov.classList.add('hide');b.onclick=start}}else ov.classList.add('hide')}});
-addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
-function moveTo(cy){const r=cv.getBoundingClientRect();const y=(cy-r.top)*H/r.height;py=Math.max(0,Math.min(H-PH,y-PH/2))}
-cv.addEventListener('pointermove',e=>moveTo(e.clientY));
-cv.addEventListener('pointerdown',e=>moveTo(e.clientY));
-function end(win){running=false;over=true;t.textContent=win?'승리! 🎉':'패배…';s.textContent=ps+' : '+as;b.textContent='다시 하기';b.onclick=start;ov.classList.remove('hide')}
-function update(){
- if(keys['arrowup']||keys['w'])py-=7;if(keys['arrowdown']||keys['s'])py+=7;
- py=Math.max(0,Math.min(H-PH,py));
- // AI
- const target=by-PH/2,d=target-ay,maxs=4.2;
- if(vx>0||Math.abs(bx-W)<W/2)ay+=Math.max(-maxs,Math.min(maxs,d));
- ay=Math.max(0,Math.min(H-PH,ay));
- bx+=vx;by+=vy;
- if(by<R){by=R;vy=-vy}if(by>H-R){by=H-R;vy=-vy}
- // left paddle
- if(vx<0&&bx-R<=20+PW&&bx-R>=10&&by>py-R&&by<py+PH+R){const h=(by-(py+PH/2))/(PH/2);const sp=Math.min(Math.hypot(vx,vy)*1.06,13);const a=h*Math.PI/3.2;vx=sp*Math.cos(a);vy=sp*Math.sin(a);bx=20+PW+R}
- // right paddle
- if(vx>0&&bx+R>=W-20-PW&&bx+R<=W-10&&by>ay-R&&by<ay+PH+R){const h=(by-(ay+PH/2))/(PH/2);const sp=Math.min(Math.hypot(vx,vy)*1.06,13);const a=h*Math.PI/3.2;vx=-sp*Math.cos(a);vy=sp*Math.sin(a);bx=W-20-PW-R}
- if(bx<-R){as++;if(as>=WIN)return end(false);serve(1)}
- if(bx>W+R){ps++;if(ps>=WIN)return end(true);serve(-1)}
-}
-function draw(){
- ctx.clearRect(0,0,W,H);
- ctx.strokeStyle=css('--line');ctx.lineWidth=3;ctx.setLineDash([12,12]);
- ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke();ctx.setLineDash([]);
- ctx.fillStyle=css('--fg');ctx.globalAlpha=.35;ctx.font='bold 56px system-ui,sans-serif';ctx.textAlign='center';
- ctx.fillText(ps||0,W/2-70,70);ctx.fillText(as||0,W/2+70,70);ctx.globalAlpha=1;
- if(py===undefined)return;
- ctx.fillStyle=css('--blue');ctx.beginPath();ctx.roundRect(20,py,PW,PH,6);ctx.fill();
- ctx.fillStyle=css('--fg');ctx.beginPath();ctx.roundRect(W-20-PW,ay,PW,PH,6);ctx.fill();
- ctx.fillStyle=css('--accent');ctx.beginPath();ctx.arc(bx,by,R,0,7);ctx.fill();
-}
-function loop(){if(running)update();draw();requestAnimationFrame(loop)}
-reset();loop();
-</script>
+    <a href="pingpong.html">pingpong</a>
+    <a href="snakegame.html">snakegame</a>
 </body>
 </html>
